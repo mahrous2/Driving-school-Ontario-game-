@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ontario Road Test Simulator</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <canvas id="gl"></canvas>
+
+  <!-- ================= HUD ================= -->
+  <div id="hud" class="hidden">
+    <div id="topLeft">
+      <canvas id="minimap" width="200" height="200"></canvas>
+      <div id="limitSign" class="limit"><span class="lt">MAXIMUM</span><span class="ln">50</span><span class="lu">km/h</span></div>
+      <div id="schoolBadge" class="hidden">SCHOOL ZONE<br><b>40</b><small>WHEN FLASHING</small></div>
+    </div>
+
+    <div id="instr"><div id="instrArrow">↑</div><div id="instrBody"><div id="instrText">—</div><div id="instrSub"></div></div><div id="instrDist"></div></div>
+
+    <div id="scorecard">
+      <div class="sc-head"><span id="modeLabel">PRACTICE</span><span id="timer">0:00</span></div>
+      <div class="sc-score"><span id="score">100</span><small>/100</small><span id="verdict" class="ok">On track</span></div>
+      <div class="sc-sub"><span id="vioCount">0 violations</span> · <span id="cpCount">Checkpoint 0/0</span></div>
+      <div id="log"></div>
+    </div>
+
+    <div id="toasts"></div>
+    <div id="hint" class="hidden"></div>
+    <div id="viewLabel"></div>
+
+    <div id="dash">
+      <div id="checks">
+        <button class="chk" id="chkL" data-act="checkLeft"><b>Z</b> Left<br>shoulder<i></i></button>
+        <button class="chk" id="chkM" data-act="checkMirror"><b>X</b> Mirrors<i></i></button>
+        <button class="chk" id="chkR" data-act="checkRight"><b>C</b> Right<br>shoulder<i></i></button>
+      </div>
+      <div id="cluster">
+        <div id="sigL" class="sig">◀</div>
+        <canvas id="speedo" width="220" height="150"></canvas>
+        <div id="sigR" class="sig">▶</div>
+      </div>
+      <div id="tells">
+        <div class="row"><span id="gear" class="gear">P</span><span id="icoBelt" class="ico warn" title="Seatbelt (B)">⛓ BELT</span></div>
+        <div class="row"><span id="icoLights" class="ico" title="Headlights (L)">◐ LIGHTS</span><span id="icoHaz" class="ico" title="Hazards (H)">⚠ HAZ</span></div>
+        <div class="row"><span id="icoSkid" class="ico" title="Traction">≋ GRIP</span><span id="gapInfo" class="ico" title="Following distance">GAP —</span></div>
+        <div class="row small" id="stopDist">Stopping distance: —</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MENU ================= -->
+  <div id="menu" class="overlay">
+    <div class="panel wide">
+      <div class="brand">
+        <div class="logo">🍁</div>
+        <div><h1>Ontario Road Test Simulator</h1><p>G2 &amp; G training · Highway Traffic Act &amp; MTO Driver's Handbook rules</p></div>
+      </div>
+      <h3>1 · Choose a scenario</h3>
+      <div id="scenarioList" class="cards"></div>
+      <h3>2 · Conditions &amp; mode</h3>
+      <div class="opts">
+        <label>Weather
+          <select id="optWeather"><option value="clear">Clear &amp; dry</option><option value="rain">Rain (wet roads)</option><option value="snow">❄ Canadian Winter (snow + black ice)</option></select>
+        </label>
+        <label>Time of day
+          <select id="optTime"><option value="day">Day</option><option value="night">Night (headlights required)</option></select>
+        </label>
+        <label>Mode
+          <select id="optMode"><option value="practice">Practice (hints, keep driving after errors)</option><option value="test">Mock Road Test (no hints, auto-fail on dangerous action)</option></select>
+        </label>
+        <label>Start camera
+          <select id="optView"><option value="cockpit">Driver cockpit + mirrors</option><option value="chase">Chase camera</option><option value="top">Top-down tactical</option></select>
+        </label>
+        <label class="chkopt"><input type="checkbox" id="optPause" checked> Pause briefly on major violations</label>
+        <label class="chkopt"><input type="checkbox" id="optMirrors" checked> Live mirrors</label>
+        <label class="chkopt"><input type="checkbox" id="optSound" checked> Sound</label>
+      </div>
+      <div class="menuFoot">
+        <button id="btnStart" class="primary">Start driving ▶</button>
+        <button id="btnHelp">Controls &amp; rules</button>
+      </div>
+      <p class="disclaimer">Training aid only. Rule explanations are paraphrased from the Official MTO Driver's Handbook and the Ontario Highway Traffic Act (HTA) — always refer to the current official publications.</p>
+    </div>
+  </div>
+
+  <div id="help" class="overlay hidden">
+    <div class="panel">
+      <h2>Controls</h2>
+      <table class="keys">
+        <tr><td><b>W / ↑</b></td><td>Accelerate (progressive)</td><td><b>S / ↓ / Space</b></td><td>Brake (progressive)</td></tr>
+        <tr><td><b>A D / ← →</b></td><td>Steer</td><td><b>R</b></td><td>Drive ⇄ Reverse (when stopped)</td></tr>
+        <tr><td><b>P</b></td><td>Park (when stopped)</td><td><b>B</b></td><td>Fasten seatbelt</td></tr>
+        <tr><td><b>Q / E</b></td><td>Left / right turn signal</td><td><b>H</b></td><td>Hazard lights</td></tr>
+        <tr><td><b>L</b></td><td>Headlights</td><td><b>V</b></td><td>Cycle camera view</td></tr>
+        <tr><td><b>Z</b></td><td>Left shoulder (blind-spot) check</td><td><b>C</b></td><td>Right shoulder check</td></tr>
+        <tr><td><b>X</b></td><td>Check mirrors</td><td><b>+ / −</b></td><td>Zoom top-down view</td></tr>
+        <tr><td><b>Esc</b></td><td>Pause</td><td><b>M</b></td><td>Mute</td></tr>
+      </table>
+      <h2>How you are marked</h2>
+      <ul class="rules">
+        <li><b class="y">Minor</b> errors cost 2–5 points (e.g. no signal, no shoulder check, stopped over the line).</li>
+        <li><b class="o">Major</b> errors cost 10–15 points (rolling stop, unsafe lane change, failing to yield).</li>
+        <li><b class="r">Dangerous actions</b> cost 25+ points and are an <b>automatic fail</b> in Mock Test mode (red light, passing a school bus, failing to yield to a pedestrian, collisions…).</li>
+        <li>Pass: score ≥ 80 with no dangerous actions.</li>
+      </ul>
+      <h2>Key Ontario habits</h2>
+      <ul class="rules">
+        <li><b>Before every lane change, merge or pull-out:</b> mirror (X) → signal → shoulder check (Z/C) → move.</li>
+        <li><b>All-way stop:</b> first to stop goes first; if tied, yield to the vehicle on your right.</li>
+        <li><b>Right on red:</b> full stop behind the line (count 3 s), yield to pedestrians &amp; traffic, obey "No Right Turn on Red" signs.</li>
+        <li><b>School bus red lights:</b> stop in BOTH directions unless a median divides the road; stop 20 m behind.</li>
+        <li><b>Streetcar doors open:</b> stop 2 m behind the rear doors until passengers reach the curb.</li>
+        <li><b>Emergency vehicle:</b> pull to the right and stop. Stopped on the shoulder? Slow down and move over.</li>
+        <li><b>Following distance:</b> 3 seconds minimum, double it on snow and ice.</li>
+      </ul>
+      <button class="primary closeHelp">Got it</button>
+    </div>
+  </div>
+
+  <div id="pause" class="overlay hidden">
+    <div class="panel small">
+      <h2>Paused</h2>
+      <button id="btnResume" class="primary">Resume (Esc)</button>
+      <button id="btnRestart">Restart scenario</button>
+      <button id="btnEnd">End &amp; show report</button>
+      <button id="btnMenu">Main menu</button>
+      <button class="openHelp">Controls &amp; rules</button>
+    </div>
+  </div>
+
+  <div id="report" class="overlay hidden">
+    <div class="panel wide">
+      <div id="reportHead"></div>
+      <div id="reportBody"></div>
+      <div class="menuFoot"><button id="btnRetry" class="primary">Try again</button><button id="btnReportMenu">Choose another scenario</button></div>
+    </div>
+  </div>
+
+  <div id="loading" class="overlay hidden"><div class="panel small"><h2>Building the road network…</h2></div></div>
+  <div id="noWebGL" class="overlay hidden"><div class="panel small"><h2>WebGL is not available</h2><p>This simulator needs a browser with WebGL enabled (Chrome, Edge, Firefox or Safari).</p></div></div>
+
+  <script src="vendor/three.min.js"></script>
+  <script src="js/core/util.js"></script>
+  <script src="js/core/input.js"></script>
+  <script src="js/core/audio.js"></script>
+  <script src="js/world/roadnet.js"></script>
+  <script src="js/sim/physics.js"></script>
+  <script src="js/sim/traffic.js"></script>
+  <script src="js/sim/peds.js"></script>
+  <script src="js/sim/special.js"></script>
+  <script src="js/rules/catalog.js"></script>
+  <script src="js/rules/examiner.js"></script>
+  <script src="js/rules/rules.js"></script>
+  <script src="js/render/textures.js"></script>
+  <script src="js/render/models.js"></script>
+  <script src="js/render/world3d.js"></script>
+  <script src="js/render/renderer.js"></script>
+  <script src="js/scenarios/nav.js"></script>
+  <script src="js/scenarios/scenarios.js"></script>
+  <script src="js/ui/hud.js"></script>
+  <script src="js/ui/menu.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
