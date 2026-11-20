@@ -13,7 +13,7 @@
 
   // Instanced object collector
   class Inst {
-    constructor(geo, mat) { this.geo = geo; this.mat = mat; this.items = []; }
+    constructor(geo, mat, cast) { this.geo = geo; this.mat = mat; this.items = []; this.cast = !!cast; }
     add(x, y, z, ry, sx, sy, sz, color) { this.items.push({ x, y, z, ry: ry || 0, sx: sx || 1, sy: sy || 1, sz: sz || 1, color }); return this.items.length - 1; }
     build() {
       if (!this.items.length) return null;
@@ -22,10 +22,11 @@
       this.items.forEach((it, i) => {
         o.position.set(it.x, it.y, it.z); o.rotation.set(0, it.ry, 0); o.scale.set(it.sx, it.sy, it.sz); o.updateMatrix();
         m.setMatrixAt(i, o.matrix);
-        if (it.color !== undefined) m.setColorAt(i, new THREE.Color(it.color));
+        if (it.color !== undefined) m.setColorAt(i, DS.lin(it.color));
       });
       m.instanceMatrix.needsUpdate = true;
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
+      m.castShadow = this.cast;
       this.mesh = m;
       return m;
     }
@@ -43,24 +44,30 @@
 
       // ---------- materials ----------
       const asphaltTex = DS.Tex.get('asphalt', winter ? 1 : 0);
-      const roadMat = new THREE.MeshLambertMaterial({ map: asphaltTex, vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-      const markMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      const wet = G.weather === 'rain';
+      // wet roads get a low roughness so the sky and headlights reflect in them
+      const roadMat = new THREE.MeshStandardMaterial({ map: asphaltTex, vertexColors: true, roughness: wet ? 0.28 : 0.93, metalness: wet ? 0.25 : 0, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+      const markMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: wet ? 0.35 : 0.7, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      const wearMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: winter ? 0.7 : 0.16, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1.5, polygonOffsetUnits: -1.5 });
       const solidMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+      const concMat = new THREE.MeshLambertMaterial({ vertexColors: true, map: DS.Tex.get('concrete') });
       const winTex = DS.Tex.get('windows', 0);
       const bldMat = new THREE.MeshLambertMaterial({ vertexColors: true, map: winTex, emissive: 0x000000, emissiveMap: DS.Tex.get('windows', 1) });
       out.windowsMat = bldMat;
 
       const roadB = new DS.GeoBatch(), markB = new DS.GeoBatch(), swB = new DS.GeoBatch(), bldB = new DS.GeoBatch(), roofB = new DS.GeoBatch();
+      const wearB = new DS.GeoBatch(), concB = new DS.GeoBatch(), wireB = new DS.GeoBatch();
+      out.lampPts = []; out.beaconPts = [];
       const H = { road: 0.02, node: 0.022, mark: 0.04 };
 
       // ground
       const groundCol = winter ? 0xe9eef2 : style === 'rural' ? 0x6f9a45 : COL.grass;
       const ground = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000), new THREE.MeshLambertMaterial({ color: groundCol }));
-      ground.rotation.x = -Math.PI / 2; ground.position.y = -0.12; root.add(ground);
+      ground.rotation.x = -Math.PI / 2; ground.position.y = -0.12; ground.receiveShadow = true; root.add(ground);
 
-      const poles = new Inst(new THREE.CylinderGeometry(0.06, 0.06, 1, 6), new THREE.MeshLambertMaterial({ color: 0x8a8d91 }));
-      const darkBox = new Inst(DS.Models.unitBox, new THREE.MeshLambertMaterial({ color: 0x222426 }));
-      const yellowBox = new Inst(DS.Models.unitBox, new THREE.MeshLambertMaterial({ color: 0xd9a400 }));
+      const poles = new Inst(new THREE.CylinderGeometry(0.05, 0.07, 1, 8), new THREE.MeshStandardMaterial({ color: 0x9a9da1, metalness: 0.6, roughness: 0.45 }), true);
+      const darkBox = new Inst(DS.Models.unitBox, new THREE.MeshLambertMaterial({ color: 0x222426 }), true);
+      const yellowBox = new Inst(DS.Models.unitBox, new THREE.MeshLambertMaterial({ color: 0xe0ac00 }), true);
       const lampInst = new Inst(new THREE.SphereGeometry(0.13, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
       const signBack = new Inst(new THREE.PlaneGeometry(1, 1), new THREE.MeshLambertMaterial({ color: 0x9aa0a6 }));
       const signs = new Map();
@@ -73,6 +80,7 @@
         if (!noPole) poles.add(x, h / 2, -y, 0, 1, h, 1);
       };
 
+      const bikeSyms = new Inst(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ map: DS.Tex.get('bikeSymbol'), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
       // ---------- roads ----------
       for (const r of net.roads) {
         const len = r.a1 - r.a0, mid = (r.a0 + r.a1) / 2;
@@ -116,10 +124,17 @@
           if (r.a1 > s) spans.push([s, r.a1]);
           for (const [s0, s1] of spans) {
             for (const sgn of [1, -1]) {
-              const u = sgn > 0 ? r.uMax + C.SIDEWALK_W / 2 : r.uMin - C.SIDEWALK_W / 2;
-              const p = r.toXY((s0 + s1) / 2, u);
-              const sx = r.axis === 'h' ? s1 - s0 : C.SIDEWALK_W, sz = r.axis === 'h' ? C.SIDEWALK_W : s1 - s0;
-              swB.box(p.x, 0.075, -p.y, sx, 0.15, sz, winter ? 0xdfe3e6 : COL.sidewalk);
+              // curb | grassy boulevard (residential) | concrete sidewalk with expansion joints
+              const L = s1 - s0, mS = (s0 + s1) / 2, edge = sgn > 0 ? r.uMax : r.uMin;
+              const strip = (q0, q1, hgt, col, batch, uv) => {
+                const p = r.toXY(mS, edge + sgn * (q0 + q1) / 2), w = q1 - q0;
+                const sx = r.axis === 'h' ? L : w, sz = r.axis === 'h' ? w : L;
+                (batch || swB).box(p.x, hgt / 2, -p.y, sx, hgt, sz, col, 0, uv ? [sx / 2.4, sz / 2.4] : undefined);
+              };
+              const blvd = style === 'suburban' && !winter ? 1.1 : 0;
+              strip(0, 0.22, 0.17, winter ? 0xd9dde1 : 0xd2cec6);
+              if (blvd) strip(0.22, 0.22 + blvd, 0.1, 0x5f8f3e);
+              strip(0.22 + blvd, C.SIDEWALK_W, 0.14, winter ? 0xe8ecef : 0xffffff, concB, true);
               if (winter) {
                 // snowbank along the curb
                 const ub = sgn > 0 ? r.uMax + 0.35 : r.uMin - 0.35;
@@ -142,7 +157,7 @@
             if (r.median > 0) {
               for (const sgn of [1, -1]) this.dashLine(markB, r, sgn * (r.median / 2 + 0.15), s0, s1, 0.15, COL.yellow, null, 0, 0);
             } else {
-              for (const off of [-0.11, 0.11]) this.dashLine(markB, r, off, s0, s1, 0.1, COL.yellow, null, 0, 0);
+              for (const off of [-0.13, 0.13]) this.dashLine(markB, r, off, s0, s1, 0.12, COL.yellow, null, 0, 0);
             }
           }
           for (const dir of [1, -1]) {
@@ -150,7 +165,7 @@
             if (!n) continue;
             for (let i = 1; i < n; i++) {
               const u = dir * (r.qLeft(dir) + i * r.laneW);
-              this.dashLine(markB, r, u, s0, s1, 0.13, COL.white, null, 3, r.kind === 'highway' ? 9 : 6);
+              this.dashLine(markB, r, u, s0, s1, 0.14, COL.white, null, 3, r.kind === 'highway' ? 9 : 6);
             }
             if (r.bike) {
               const u = dir * r.qCurb(dir);
@@ -164,6 +179,19 @@
                   const lo = Math.min(sA, sB), hi = Math.max(sA, sB);
                   if (lo >= s0 - 1 && hi <= s1 + 1) { const p = r.toXY((lo + hi) / 2, bu); markB.ground(p.x, p.y, hi - lo, C.BIKE_W - 0.2, hd, H.mark - 0.005, COL.green); }
                 }
+              }
+            }
+            // worn tyre tracks in each lane (bare dark asphalt in winter)
+            for (let i = 0; i < n; i++) {
+              const uc = r.laneU(dir, i);
+              for (const o of [-0.85, 0.85]) { const pw = r.toXY((s0 + s1) / 2, uc + o); wearB.ground(pw.x, pw.y, Math.abs(s1 - s0), 0.7, hd, H.road + 0.006, winter ? 0x33383e : 0x15171a); }
+            }
+            if (r.bike) {
+              const pb = r.toXY((s0 + s1) / 2, r.bikeU(dir));
+              markB.ground(pb.x, pb.y, Math.abs(s1 - s0), C.BIKE_W - 0.25, hd, H.mark - 0.006, 0x2f8f55);
+              for (let sb = Math.min(s0, s1) + 12; sb < Math.max(s0, s1) - 8; sb += 45) {
+                const q = r.toXY(sb, r.bikeU(dir));
+                bikeSyms.add(q.x, H.mark + 0.003, -q.y, r.heading(dir) - Math.PI / 2, 1.0, 1, 1.9);
               }
             }
             if (r.kind === 'highway' || r.rural) {
@@ -181,10 +209,21 @@
           for (const dir of [1, -1]) {
             if (!r.n(dir)) continue;
             const u0 = r.laneU(dir, 0);
+            const pb = r.toXY(mid, u0);
+            markB.ground(pb.x, pb.y, len, 2.3, hd, H.mark - 0.008, winter ? 0x9aa0a6 : 0x6f7276); // track bed
             for (const off of [-0.72, 0.72]) {
               const p = r.toXY(mid, u0 + off);
-              markB.ground(p.x, p.y, len, 0.09, hd, H.mark + 0.004, COL.track);
+              swB.box(p.x, 0.045, -p.y, r.axis === 'h' ? len : 0.08, 0.05, r.axis === 'h' ? 0.08 : len, 0xa7abb0);
             }
+            // overhead contact wire (TTC catenary)
+            const pw = r.toXY(mid, u0);
+            wireB.box(pw.x, 5.85, -pw.y, r.axis === 'h' ? len : 0.03, 0.03, r.axis === 'h' ? 0.03 : len, 0x1a1a1a);
+          }
+          for (let sp = r.a0 + 15; sp < r.a1; sp += 40) {
+            if (r.nodes.some((n) => Math.abs(net.nodeS(n, r) - sp) < 14)) continue;
+            const pa = r.toXY(sp, r.uMin - 0.6), pc = r.toXY(sp, r.uMax + 0.6), pm = r.toXY(sp, (r.uMin + r.uMax) / 2);
+            poles.add(pa.x, 3.6, -pa.y, 0, 2.2, 7.2, 2.2); poles.add(pc.x, 3.6, -pc.y, 0, 2.2, 7.2, 2.2);
+            wireB.box(pm.x, 6.15, -pm.y, r.axis === 'h' ? 0.025 : r.uMax - r.uMin + 1.2, 0.025, r.axis === 'h' ? r.uMax - r.uMin + 1.2 : 0.025, 0x2a2a2a);
           }
         }
         // highway barriers
@@ -406,7 +445,8 @@
       }
 
       // ---------- street lamps ----------
-      const lampHeads = new Inst(new THREE.BoxGeometry(0.7, 0.15, 0.35), new THREE.MeshBasicMaterial({ color: 0x777777 }));
+      const lampHeads = new Inst(new THREE.BoxGeometry(0.75, 0.16, 0.36), new THREE.MeshBasicMaterial({ color: 0x8a8d90 }));
+      const lampArms = new Inst(DS.Models.unitBox, new THREE.MeshStandardMaterial({ color: 0x9a9da1, metalness: 0.6, roughness: 0.45 }), true);
       const glows = new Inst(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: DS.Tex.get('glow'), transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
       if (style !== 'rural') {
         for (const r of net.roads) {
@@ -418,8 +458,11 @@
               const u = sgn > 0 ? r.uMax + (r.sidewalk ? 0.5 : 1.8) : r.uMin - (r.sidewalk ? 0.5 : 1.8);
               const p = r.toXY(s + sgn * 8, u);
               poles.add(p.x, 4.25, -p.y, 0, 1.6, 8.5, 1.6);
-              const inward = r.toXY(s + sgn * 8, u - sgn * 1.1);
+              const arm = r.toXY(s + sgn * 8, u - sgn * 0.9);
+              lampArms.add(arm.x, 8.45, -arm.y, r.axis === 'h' ? Math.PI / 2 : 0, 1.8, 0.07, 0.07);
+              const inward = r.toXY(s + sgn * 8, u - sgn * 1.9);
               lampHeads.add(inward.x, 8.4, -inward.y, r.axis === 'h' ? Math.PI / 2 : 0);
+              out.lampPts.push(new THREE.Vector3(inward.x, 8.28, -inward.y));
               const g = r.toXY(s + sgn * 8, u - sgn * 3.5);
               glows.add(g.x, 0.06, -g.y, 0, 11, 1, 11);
             }
@@ -455,17 +498,26 @@
       }
 
       // ---------- assemble ----------
-      if (!roadB.empty) root.add(roadB.build(roadMat));
-      if (!markB.empty) root.add(markB.build(markMat));
-      if (!swB.empty) root.add(swB.build(solidMat));
-      if (!bldB.empty) root.add(bldB.build(bldMat));
-      if (!roofB.empty) root.add(roofB.build(solidMat));
-      for (const inst of [poles, darkBox, yellowBox, signBack, lampHeads]) { const m = inst.build(); if (m) root.add(m); }
+      if (!roadB.empty) root.add(roadB.build(roadMat, { receive: true }));
+      if (!wearB.empty) root.add(wearB.build(wearMat));
+      if (!markB.empty) root.add(markB.build(markMat, { receive: true }));
+      if (!swB.empty) root.add(swB.build(solidMat, { receive: true, cast: true }));
+      if (!concB.empty) root.add(concB.build(concMat, { receive: true }));
+      if (!wireB.empty) root.add(wireB.build(solidMat));
+      if (!bldB.empty) root.add(bldB.build(bldMat, { receive: true, cast: true }));
+      if (!roofB.empty) root.add(roofB.build(solidMat, { receive: true, cast: true }));
+      for (const inst of [poles, darkBox, yellowBox, signBack, lampHeads, lampArms, bikeSyms]) { const m = inst.build(); if (m) root.add(m); }
       for (const inst of signs.values()) { const m = inst.build(); if (m) root.add(m); }
       const lm = lampInst.build(); if (lm) { root.add(lm); out.lampMesh = lm; }
       const gm = glows.build(); if (gm) { root.add(gm); out.glows = gm; gm.visible = !!G.night; }
       out.lampHeads = lampHeads.mesh;
       if (this._trees) { for (const m of this._trees.build()) root.add(m); this._trees = null; }
+      // plain material colours are authored in sRGB; convert once to linear for the tone-mapped renderer
+      const seen = new Set();
+      root.traverse((o) => {
+        const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+        for (const m of mats) { if (seen.has(m) || !m.color || m.vertexColors) continue; seen.add(m); m.color.convertSRGBToLinear(); if (m.specular) m.specular.convertSRGBToLinear(); }
+      });
       scene.add(root);
       return out;
     },
@@ -511,8 +563,11 @@
         const fx = p.x + fv.x * 0.18, fy = p.y + fv.y * 0.18;
         const cols = ['R', 'Y', 'G'];
         for (let i = 0; i < 3; i++) {
-          const idx = lampInst.add(fx, h.y + 0.38 - i * 0.38, -fy, 0, 1, 1, 1, 0x222222);
-          out.signalLamps.push({ idx, node: n, k, c: cols[i] });
+          const ly = h.y + 0.38 - i * 0.38;
+          const idx = lampInst.add(fx, ly, -fy, 0, 1, 1, 1, 0x222222);
+          out.signalLamps.push({ idx, node: n, k, c: cols[i], pos: new THREE.Vector3(fx + fv.x * 0.05, ly, -(fy + fv.y * 0.05)) });
+          // sun visor over each lens
+          darkBox.add(fx + fv.x * 0.12, ly + 0.14, -(fy + fv.y * 0.12), facingRot(fv.x, fv.y), 0.3, 0.03, 0.26);
         }
         // backplate
         darkBox.add(p.x - fv.x * 0.02, h.y, -(p.y - fv.y * 0.02), facingRot(fv.x, fv.y), 0.75, 1.5, 0.04);
@@ -521,9 +576,9 @@
 
     tree(G, root, x, y, rng, winter, out, scale) {
       if (!this._trees) {
-        const trunk = new Inst(new THREE.CylinderGeometry(0.18, 0.26, 1, 6), new THREE.MeshLambertMaterial({ color: 0x5b4030 }));
-        const crown = new Inst(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }));
-        const cone = new Inst(new THREE.ConeGeometry(1, 1, 7), new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }));
+        const trunk = new Inst(new THREE.CylinderGeometry(0.14, 0.24, 1, 7), new THREE.MeshLambertMaterial({ color: 0x5b4030 }), true);
+        const crown = new Inst(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), true);
+        const cone = new Inst(new THREE.ConeGeometry(1, 1, 8), new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), true);
         this._trees = { trunk, crown, cone, build: () => [trunk.build(), crown.build(), cone.build()].filter(Boolean) };
       }
       const s = (scale || 1) * U.lerp(0.8, 1.4, rng());
@@ -531,11 +586,19 @@
       const conifer = rng() < (winter ? 0.6 : 0.3);
       T.trunk.add(x, 1.2 * s, -y, 0, s, 2.4 * s, s);
       if (conifer) {
-        const c = winter ? new THREE.Color(0x2f4f3a).lerp(new THREE.Color(0xffffff), 0.35).getHex() : 0x2f5d3a;
-        T.cone.add(x, 4.2 * s, -y, rng() * 6, 2.2 * s, 6 * s, 2.2 * s, c);
+        // layered spruce
+        for (let i = 0; i < 3; i++) {
+          const c = winter ? (i === 2 ? 0xe9eef2 : 0x9fb2a6) : [0x24502f, 0x2b5d36, 0x336b3d][i];
+          T.cone.add(x, (2.4 + i * 1.7) * s, -y, rng() * 6, (2.4 - i * 0.6) * s, 3.2 * s, (2.4 - i * 0.6) * s, c);
+        }
       } else {
-        const base = winter ? 0x6b5a4a : [0x3f7a33, 0x4f8a3a, 0x5d9440, 0x2f6b2f][Math.floor(rng() * 4)];
-        T.crown.add(x, 3.6 * s, -y, rng() * 6, 2.4 * s, 2.2 * s, 2.4 * s, base);
+        // deciduous crown made of several overlapping clumps
+        const base = winter ? 0x6b5a4a : [0x3f7a33, 0x4f8a3a, 0x5d9440, 0x2f6b2f, 0x6a9a3c][Math.floor(rng() * 5)];
+        T.crown.add(x, 3.8 * s, -y, rng() * 6, 2.0 * s, 1.8 * s, 2.0 * s, base);
+        for (let i = 0; i < 3; i++) {
+          const a = rng() * 6.28, d = 0.9 * s;
+          T.crown.add(x + Math.cos(a) * d, (3.3 + rng() * 1.2) * s, -(y + Math.sin(a) * d), rng() * 6, 1.3 * s, 1.2 * s, 1.3 * s, base);
+        }
       }
       out.obstacles.push({ x0: x - 0.3, x1: x + 0.3, y0: y - 0.3, y1: y + 0.3, tree: true });
     },
@@ -577,10 +640,20 @@
       }
     },
 
-    building(B, R, x0, y0, x1, y1, h, color, out, roofCol) {
-      const w = x1 - x0, d = y1 - y0;
-      B.box((x0 + x1) / 2, h / 2, -(y0 + y1) / 2, w, h, d, color, 0, [Math.max(w, d) / 4, h / 3.6]);
-      R.box((x0 + x1) / 2, h + 0.15, -(y0 + y1) / 2, w + 0.3, 0.3, d + 0.3, roofCol || 0x55585c);
+    building(B, R, x0, y0, x1, y1, h, color, out, roofCol, storefront) {
+      const w = x1 - x0, d = y1 - y0, cx = (x0 + x1) / 2, cz = -(y0 + y1) / 2;
+      const base = storefront ? 4.2 : 0;
+      B.box(cx, base + (h - base) / 2, cz, w, h - base, d, color, 0, [Math.max(w, d) / 7, (h - base) / 3.6]);
+      if (storefront) {
+        // ground-floor shop glazing with a dark frame and a coloured awning band
+        R.box(cx, base / 2, cz, w - 0.3, base, d - 0.3, 0x46596a);
+        R.box(cx, base - 0.25, cz, w + 0.25, 0.5, d + 0.25, [0x7a1f1f, 0x1f4a7a, 0x2f5d3a, 0x6b4b1f, 0x333333][Math.floor(Math.abs(x0 * 7 + y0 * 3)) % 5]);
+      }
+      R.box(cx, h + 0.15, cz, w + 0.35, 0.3, d + 0.35, roofCol || 0x55585c); // cornice / parapet
+      if (w > 10 && d > 10 && h > 12) {
+        R.box(cx + w * 0.15, h + 0.9, cz - d * 0.1, 3, 1.4, 2.2, 0x8c9096); // rooftop HVAC
+        R.box(cx - w * 0.2, h + 0.6, cz + d * 0.15, 2, 0.9, 2, 0x7d8186);
+      }
       out.obstacles.push({ x0, x1, y0, y1 });
     },
 
@@ -596,7 +669,7 @@
         if (blocked(x0, y0, x1, y1)) continue;
         const tower = rng() < 0.18;
         const h = tower ? U.lerp(45, 95, rng()) : U.lerp(9, 32, rng());
-        this.building(B, R, x0, y0, x1, y1, h, pal[Math.floor(rng() * pal.length)], out);
+        this.building(B, R, x0, y0, x1, y1, h, pal[Math.floor(rng() * pal.length)], out, null, edge);
       }
     },
 

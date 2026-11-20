@@ -11,9 +11,11 @@
   const HUD = {
     init() {
       this.el = {};
-      for (const id of ['hud', 'instrArrow', 'instrText', 'instrSub', 'instrDist', 'limitSign', 'schoolBadge', 'score', 'verdict', 'vioCount', 'cpCount', 'log', 'toasts', 'hint', 'viewLabel', 'sigL', 'sigR', 'gear', 'icoBelt', 'icoLights', 'icoHaz', 'icoSkid', 'gapInfo', 'stopDist', 'modeLabel', 'timer', 'chkL', 'chkM', 'chkR'])
+      for (const id of ['hud', 'instrArrow', 'instrText', 'instrSub', 'instrDist', 'limitSign', 'schoolBadge', 'score', 'verdict', 'vioCount', 'cpCount', 'log', 'toasts', 'hint', 'viewLabel', 'sigL', 'sigR', 'icoBelt', 'icoLights', 'icoHaz', 'icoSkid', 'gapInfo', 'stopDist', 'modeLabel', 'timer', 'chkL', 'chkM', 'chkR'])
         this.el[id] = $(id);
-      this.speedo = $('speedo').getContext('2d');
+      this.speedo = this.hidpi($('speedo'), 240, 168);
+      this.steerG = this.hidpi($('steerGauge'), 132, 132);
+      this.prnd = [...document.querySelectorAll('#prnd span')];
       this.mini = $('minimap').getContext('2d');
       document.querySelectorAll('.chk').forEach((b) => b.addEventListener('click', () => DS.Input.push(b.dataset.act)));
       this.el.log.addEventListener('click', (e) => { const it = e.target.closest('.logItem'); if (it && !it.classList.contains('praise')) it.classList.toggle('open'); });
@@ -104,20 +106,19 @@
       // indicators
       el.sigL.classList.toggle('on', (P.sigL || P.hazards) && G.blink);
       el.sigR.classList.toggle('on', (P.sigR || P.hazards) && G.blink);
-      el.gear.textContent = P.gear;
-      el.icoBelt.className = 'ico ' + (P.seatbelt ? 'on' : 'warn');
-      el.icoBelt.textContent = P.seatbelt ? '⛓ BELT' : '⛓ BELT!';
-      el.icoLights.className = 'ico ' + (P.headlights ? 'on' : '');
-      el.icoHaz.className = 'ico ' + (P.hazards && G.blink ? 'amber' : P.hazards ? 'on' : '');
-      el.icoSkid.className = 'ico ' + (P.skidding ? 'amber' : G.weather === 'snow' ? 'on' : '');
-      el.icoSkid.textContent = P.skidding ? '≋ SKID!' : P.mu < 0.2 ? '≋ ICE' : '≋ GRIP ' + Math.round(P.mu * 100) + '%';
+      for (const sp of this.prnd) sp.classList.toggle('on', sp.dataset.g === P.gear);
+      el.icoBelt.className = 'tl ' + (P.seatbelt ? 'on' : 'warn');
+      el.icoLights.className = 'tl ' + (P.headlights ? 'on' : '');
+      el.icoHaz.className = 'tl ' + (P.hazards && G.blink ? 'amber' : '');
+      el.icoSkid.className = 'tl ' + (P.skidding ? 'amber' : P.mu < 0.6 ? 'blue' : '');
+      el.icoSkid.textContent = P.skidding ? 'SKID' : P.mu < 0.2 ? 'ICE' : 'GRIP ' + Math.round(P.mu * 100) + '%';
       const gi = pl.gapInfo;
       const need = G.weather === 'snow' ? 4.5 : G.weather === 'rain' ? 3.6 : 3;
       if (gi && gi.tg !== null && gi.tg < 8 && P.speed > 3) {
-        el.gapInfo.textContent = 'GAP ' + gi.tg.toFixed(1) + ' s';
-        el.gapInfo.className = 'ico ' + (gi.tg < need / 2 ? 'warn' : gi.tg < need ? 'amber' : 'on');
-      } else { el.gapInfo.textContent = 'GAP —'; el.gapInfo.className = 'ico'; }
-      el.stopDist.textContent = 'Stopping distance: ' + Math.round(P.stoppingDistance()) + ' m' + (P.mu < 0.6 ? ' (slippery!)' : '');
+        el.gapInfo.textContent = 'FOLLOWING GAP  ' + gi.tg.toFixed(1) + ' s';
+        el.gapInfo.className = 'readout ' + (gi.tg < need / 2 ? 'warn' : gi.tg < need ? 'amber' : 'on');
+      } else { el.gapInfo.textContent = 'FOLLOWING GAP  —'; el.gapInfo.className = 'readout'; }
+      el.stopDist.textContent = 'Stopping distance ' + Math.round(P.stoppingDistance()) + ' m' + (P.mu < 0.6 ? ' · slippery' : '');
       // checks
       const pct = (t) => Math.max(0, 1 - (G.time - t) / 5) * 100;
       el.chkL.querySelector('i').style.width = pct(P.lastShoulderL) + '%';
@@ -128,30 +129,82 @@
       el.chkR.classList.toggle('active', G.time - P.lastShoulderR < 1);
       el.viewLabel.textContent = DS.VIEW_NAMES[DS.Renderer.view] + ' · V to change';
       this.drawSpeedo(G);
+      if (this.steerG) this.drawSteer(G);
       this.drawMinimap(G);
     },
 
+    hidpi(cv, w, h) {
+      const r = Math.min(2, window.devicePixelRatio || 1);
+      cv.width = w * r; cv.height = h * r;
+      const g = cv.getContext('2d'); g.scale(r, r); g.W = w; g.H = h;
+      return g;
+    },
     drawSpeedo(G) {
-      const g = this.speedo, P = G.player, W = 220, H = 150;
+      const g = this.speedo, P = G.player, W = g.W, H = g.H;
       g.clearRect(0, 0, W, H);
-      const cx = 110, cy = 112, R = 92, max = 180;
-      const a0 = Math.PI * 0.85, a1 = Math.PI * 2.15;
+      const cx = W / 2, cy = 104, R = 92, max = 180;
+      const a0 = Math.PI * 0.8, a1 = Math.PI * 2.2;
       const ang = (v) => a0 + (a1 - a0) * Math.min(v, max) / max;
-      g.lineWidth = 8; g.strokeStyle = '#1e2733'; g.beginPath(); g.arc(cx, cy, R, a0, a1); g.stroke();
-      const lim = G.playerLoc.schoolZone ? G.playerLoc.schoolZone.limit : G.playerLoc.limit;
-      if (lim) { g.strokeStyle = 'rgba(255,75,75,.75)'; g.beginPath(); g.arc(cx, cy, R, ang(lim), a1); g.stroke(); }
-      g.fillStyle = '#9aa7b4'; g.font = '11px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle';
-      for (let v = 0; v <= max; v += 20) {
-        const a = ang(v);
-        g.strokeStyle = '#9aa7b4'; g.lineWidth = 2; g.beginPath(); g.moveTo(cx + Math.cos(a) * (R - 12), cy + Math.sin(a) * (R - 12)); g.lineTo(cx + Math.cos(a) * (R - 4), cy + Math.sin(a) * (R - 4)); g.stroke();
-        g.fillText(v, cx + Math.cos(a) * (R - 24), cy + Math.sin(a) * (R - 24));
-      }
       const kmh = P.kmh;
+      const lim = G.playerLoc.schoolZone ? G.playerLoc.schoolZone.limit : G.playerLoc.limit;
+      // bezel + track
+      g.lineCap = 'round';
+      g.lineWidth = 10; g.strokeStyle = '#0d1218'; g.beginPath(); g.arc(cx, cy, R, a0, a1); g.stroke();
+      // live speed arc (gradient), red once over the limit
+      const over = lim && kmh > lim + 2;
+      const grad = g.createLinearGradient(cx - R, 0, cx + R, 0);
+      grad.addColorStop(0, '#1f6feb'); grad.addColorStop(1, over ? '#ff4b4b' : '#29d3ff');
+      g.strokeStyle = grad; g.shadowColor = over ? '#ff4b4b' : '#29d3ff'; g.shadowBlur = 12;
+      if (kmh > 0.5) { g.beginPath(); g.arc(cx, cy, R, a0, ang(kmh)); g.stroke(); }
+      g.shadowBlur = 0;
+      // speed-limit marker
+      if (lim) {
+        const a = ang(lim);
+        g.strokeStyle = '#ff4b4b'; g.lineWidth = 4; g.beginPath(); g.moveTo(cx + Math.cos(a) * (R - 9), cy + Math.sin(a) * (R - 9)); g.lineTo(cx + Math.cos(a) * (R + 9), cy + Math.sin(a) * (R + 9)); g.stroke();
+      }
+      // ticks
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      for (let v = 0; v <= max; v += 10) {
+        const a = ang(v), major = v % 20 === 0;
+        g.strokeStyle = major ? '#c9d4de' : '#4c5967'; g.lineWidth = major ? 2 : 1.2;
+        g.beginPath(); g.moveTo(cx + Math.cos(a) * (R - 16), cy + Math.sin(a) * (R - 16)); g.lineTo(cx + Math.cos(a) * (R - (major ? 24 : 20)), cy + Math.sin(a) * (R - (major ? 24 : 20))); g.stroke();
+        if (major) { g.fillStyle = '#8796a5'; g.font = '600 10px system-ui'; g.fillText(v, cx + Math.cos(a) * (R - 35), cy + Math.sin(a) * (R - 35)); }
+      }
+      // needle
       const a = ang(kmh);
-      g.strokeStyle = kmh > (lim || 999) + 5 ? '#ff4b4b' : '#29d3ff'; g.lineWidth = 4;
-      g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * (R - 10), cy + Math.sin(a) * (R - 10)); g.stroke();
-      g.fillStyle = '#e8edf2'; g.font = 'bold 34px system-ui'; g.fillText(Math.round(kmh), cx, cy - 18);
-      g.fillStyle = '#9aa7b4'; g.font = '11px system-ui'; g.fillText('km/h', cx, cy + 6);
+      g.strokeStyle = '#ff6a3d'; g.lineWidth = 3; g.shadowColor = '#ff6a3d'; g.shadowBlur = 8;
+      g.beginPath(); g.moveTo(cx + Math.cos(a) * 30, cy + Math.sin(a) * 30); g.lineTo(cx + Math.cos(a) * (R - 12), cy + Math.sin(a) * (R - 12)); g.stroke();
+      g.shadowBlur = 0;
+      // hub with digital readout
+      const hub = g.createRadialGradient(cx, cy - 6, 4, cx, cy, 36);
+      hub.addColorStop(0, '#1a222c'); hub.addColorStop(1, '#06090c');
+      g.fillStyle = hub; g.beginPath(); g.arc(cx, cy, 34, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = 'rgba(255,255,255,.08)'; g.lineWidth = 1; g.stroke();
+      g.fillStyle = over ? '#ff6b6b' : '#eef3f7'; g.font = '800 30px system-ui'; g.fillText(Math.round(kmh), cx, cy - 2);
+      g.fillStyle = '#7d8b98'; g.font = '600 9px system-ui'; g.fillText('km/h', cx, cy + 18);
+      g.fillStyle = '#5d6b78'; g.font = '700 10px system-ui'; g.fillText((P.odometer / 1000).toFixed(1) + ' km', cx, H - 8);
+    },
+    drawSteer(G) {
+      const g = this.steerG, P = G.player, W = g.W, H = g.H, cx = W / 2, cy = H / 2 - 6;
+      g.clearRect(0, 0, W, H);
+      const wheelDeg = -P.steerIn * 450; // steering-wheel angle (lock-to-lock ~2.5 turns)
+      const roadDeg = (P.steer || 0) * 180 / Math.PI;
+      // arc scale
+      g.lineCap = 'round';
+      g.strokeStyle = '#0d1218'; g.lineWidth = 6; g.beginPath(); g.arc(cx, cy, 50, Math.PI * 1.15, Math.PI * 1.85); g.stroke();
+      const t = U.clamp(-P.steerIn, -1, 1);
+      g.strokeStyle = Math.abs(t) > 0.8 ? '#ffb000' : '#29d3ff'; g.shadowColor = g.strokeStyle; g.shadowBlur = 8;
+      g.beginPath(); g.arc(cx, cy, 50, Math.PI * 1.5, Math.PI * 1.5 + t * Math.PI * 0.35, t < 0); g.stroke(); g.shadowBlur = 0;
+      // wheel icon
+      g.save(); g.translate(cx, cy + 4); g.rotate(wheelDeg * Math.PI / 180);
+      g.strokeStyle = '#c9d4de'; g.lineWidth = 6; g.beginPath(); g.arc(0, 0, 30, 0, Math.PI * 2); g.stroke();
+      g.lineWidth = 5; g.beginPath(); g.moveTo(-28, 4); g.lineTo(-9, 2); g.moveTo(28, 4); g.lineTo(9, 2); g.moveTo(0, 10); g.lineTo(0, 28); g.stroke();
+      g.fillStyle = '#c9d4de'; g.beginPath(); g.arc(0, 2, 9, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#d52b1e'; g.fillRect(-3, -33, 6, 7);
+      g.restore();
+      g.textAlign = 'center'; g.fillStyle = '#c9d4de'; g.font = '700 12px system-ui';
+      g.fillText(Math.abs(wheelDeg) < 1 ? 'STRAIGHT' : Math.round(Math.abs(wheelDeg)) + '° ' + (wheelDeg < 0 ? 'L' : 'R'), cx, H - 14);
+      g.fillStyle = '#5d6b78'; g.font = '600 9px system-ui'; g.fillText('wheels ' + Math.abs(roadDeg).toFixed(1) + '°', cx, H - 2);
     },
 
     drawMinimap(G) {

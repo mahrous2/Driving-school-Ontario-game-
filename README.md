@@ -79,19 +79,34 @@ Severity follows road-test conventions:
 The pass mark is **80 or more with no dangerous actions**. The end-of-drive report groups every violation with its
 rule, its MTO explanation, the HTA reference and a tip, and also lists what you did well.
 
+## Graphics
+
+* **Lighting.** ACES tone mapping with physically based car paint and glass, a sky dome with
+  reflections, and a sun shadow map that follows your car. Every vehicle and pedestrian also has a soft
+  contact shadow.
+* **Vehicles.** Sculpted bodies with wheel arches, raked windshields, grilles, side mirrors and Ontario plates.
+  * Headlights (real spotlights on your car, light pools for traffic at night).
+  * Brake lights that flare, blinking amber signals, and wheels that spin and steer.
+* **Distinct vehicle types.** Sedans, SUVs, vans, taxis, trucks and a police car; a school bus with flashing
+  amber and red lights and a stop arm that swings out; a TTC-style articulated streetcar with a pantograph on the
+  overhead wire and sliding doors; an ambulance and a fire truck.
+* **Roads.** Grainy asphalt with worn tyre tracks (bare tracks in winter), crisp double yellow lines, dashed
+  lane lines, stop bars, zebra crosswalks, green bike lanes with bike symbols, streetcar track beds and catenary.
+* **Streetscape.** Curbs, grassy boulevards, jointed concrete sidewalks, storefronts, rooftop units, cobra-head
+  street lamps, signal heads with visors and glowing lenses, and Ontario-style signs.
+* **Weather and night.** Wet, reflective roads in rain; snowfall and black ice in winter; lit windows and
+  glowing lamps at night.
+
 ## Views and teaching aids
 
-* **Driver cockpit.** Live rear-view and side mirrors (mirrored render targets). The camera turns your head during
-  shoulder checks, so you actually see into the blind spot.
-* **Chase camera.**
-* **Top-down tactical view.** Blind-spot zones beside the car turn red when a vehicle is in them, and a bar on the
-  road shows your current stopping distance (1.5 s reaction plus braking at the current grip).
-* **HUD.**
-  * Examiner instructions with distances; a heading-up minimap showing the route.
-  * The current speed-limit sign (a school-zone badge appears when one applies).
-  * Speedometer with the over-limit arc, turn-signal tell-tales and the gear.
-  * Seatbelt, lights, hazard and grip/skid indicators.
-  * Live following gap in seconds, and stopping distance.
+* **Driver cockpit.** Dashboard, steering wheel and bonnet, with framed live rear-view and side mirrors. The
+  camera turns your head during shoulder checks and leans with acceleration.
+* **Chase camera** and **top-down tactical view**, both spring-damped so they follow smoothly. In the top-down
+  view, blind-spot zones turn red when a vehicle is in them, and a bar on the road shows your stopping distance.
+* **Instrument cluster.**
+  * Analog and digital speedometer with the speed-limit marker.
+  * P-R-N-D gear indicator, turn-signal arrows and telltales (seatbelt, lights, hazards, grip/skid).
+  * Steering-wheel angle gauge, following gap in seconds, and stopping distance.
 
 ## Architecture
 
@@ -109,8 +124,8 @@ js/sim/       physics.js   player car (bicycle model + friction circle, ABS, wea
 js/rules/     catalog.js   violation definitions (title, severity, points, rule, MTO text, HTA, tip)
               examiner.js  scoring, cooldowns, praise, pass/fail
               rules.js     the rule engine (approach / intersection / lane tracking + all checks)
-js/render/    textures.js (procedural signs), models.js (low-poly vehicles, batching), world3d.js (static world),
-              renderer.js (cameras, mirrors, dynamic objects, weather, night)
+js/render/    textures.js (procedural signs & surfaces), models.js (detailed vehicles, batching), world3d.js (static world),
+              renderer.js (PBR lighting, shadows, glows, spring cameras, mirrors, weather, night)
 js/scenarios/ nav.js (examiner directions, checkpoints, scripted events), scenarios.js (the five scenarios)
 js/ui/        hud.js, menu.js
 js/main.js    game loop (fixed 60 Hz simulation step)

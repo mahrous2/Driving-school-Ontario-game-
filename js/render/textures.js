@@ -124,13 +124,83 @@
       return c;
     },
     windows(lit) {
-      const c = canvas(128, 128), g = c.getContext('2d');
-      g.fillStyle = lit ? '#000' : '#fff'; g.fillRect(0, 0, 128, 128);
-      for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
-        const on = lit ? Math.random() < 0.45 : true;
-        g.fillStyle = lit ? (on ? '#ffd98a' : '#000') : '#8aa4b8';
-        g.fillRect(x * 32 + 6, y * 32 + 8, 20, 16);
+      // one storey x two bays of curtain-wall glazing with mullions and sky reflection
+      const c = canvas(256, 256), g = c.getContext('2d');
+      g.fillStyle = lit ? '#000' : '#fff'; g.fillRect(0, 0, 256, 256);
+      for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) {
+        const X = x * 128 + 14, Y = y * 128 + 18, w = 100, h = 84;
+        if (lit) {
+          const on = Math.random() < 0.5;
+          g.fillStyle = on ? ['#ffd98a', '#ffe9b8', '#cfe4ff'][Math.floor(Math.random() * 3)] : '#05070a';
+          g.fillRect(X, Y, w, h);
+          if (on) { g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(X, Y + h * 0.55, w, h * 0.45); }
+        } else {
+          const gr = g.createLinearGradient(X, Y, X + w, Y + h);
+          gr.addColorStop(0, '#9fb8cc'); gr.addColorStop(0.45, '#5d7487'); gr.addColorStop(1, '#2d3d4b');
+          g.fillStyle = gr; g.fillRect(X, Y, w, h);
+          g.fillStyle = 'rgba(255,255,255,0.22)'; g.beginPath(); g.moveTo(X, Y + h); g.lineTo(X + w * 0.35, Y); g.lineTo(X + w * 0.5, Y); g.lineTo(X + w * 0.15, Y + h); g.fill();
+          g.fillStyle = '#ccd3d9'; g.fillRect(X + w / 2 - 2, Y, 4, h);
+        }
       }
+      if (!lit) { g.fillStyle = 'rgba(0,0,0,0.18)'; for (let y = 0; y < 2; y++) g.fillRect(0, y * 128 + 108, 256, 8); }
+      return c;
+    },
+    concrete() {
+      const c = canvas(256, 256), g = c.getContext('2d');
+      g.fillStyle = '#cfccc5'; g.fillRect(0, 0, 256, 256);
+      for (let i = 0; i < 3500; i++) { g.fillStyle = Math.random() < 0.5 ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)'; g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); }
+      g.strokeStyle = 'rgba(60,60,60,0.35)'; g.lineWidth = 2;
+      for (let i = 0; i <= 256; i += 128) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 256); g.stroke(); g.beginPath(); g.moveTo(0, i); g.lineTo(256, i); g.stroke(); }
+      return c;
+    },
+    bikeSymbol() {
+      const c = canvas(128, 256), g = c.getContext('2d');
+      g.strokeStyle = '#fff'; g.lineWidth = 7; g.lineCap = 'round';
+      g.beginPath(); g.arc(64, 80, 26, 0, Math.PI * 2); g.stroke();
+      g.beginPath(); g.arc(64, 176, 26, 0, Math.PI * 2); g.stroke();
+      g.beginPath(); g.moveTo(64, 80); g.lineTo(64, 130); g.lineTo(64, 176); g.moveTo(64, 130); g.lineTo(44, 110); g.moveTo(40, 98); g.lineTo(88, 104); g.stroke();
+      g.fillStyle = '#fff'; g.beginPath(); g.arc(30, 112, 9, 0, Math.PI * 2); g.fill();
+      return c;
+    },
+    blob() {
+      const c = canvas(128, 128), g = c.getContext('2d');
+      const gr = g.createRadialGradient(64, 64, 6, 64, 64, 64);
+      gr.addColorStop(0, 'rgba(0,0,0,0.75)'); gr.addColorStop(0.55, 'rgba(0,0,0,0.45)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+      return c;
+    },
+    beam() {
+      // elongated headlight pool on the road (white-yellow, fades forward)
+      const c = canvas(128, 256), g = c.getContext('2d');
+      const gr = g.createRadialGradient(64, 240, 10, 64, 150, 130);
+      gr.addColorStop(0, 'rgba(255,245,220,0.9)'); gr.addColorStop(0.5, 'rgba(255,240,210,0.35)'); gr.addColorStop(1, 'rgba(255,240,210,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, 128, 256);
+      return c;
+    },
+    schoolbus() {
+      const c = canvas(512, 96), g = c.getContext('2d');
+      g.fillStyle = '#111'; g.fillRect(0, 0, 512, 96); g.fillStyle = '#ffb800'; g.fillRect(6, 6, 500, 84);
+      text(g, 'SCHOOL BUS', 256, 50, 66, '#111');
+      return c;
+    },
+    stopRound() {
+      const c = canvas(256, 256), g = c.getContext('2d');
+      g.fillStyle = '#c8102e'; g.fillRect(0, 0, 256, 256);
+      g.strokeStyle = '#fff'; g.lineWidth = 10; octagon(g, 128, 128, 112); g.stroke();
+      text(g, 'STOP', 128, 132, 80, '#fff');
+      return c;
+    },
+    destination() {
+      const c = canvas(512, 96), g = c.getContext('2d');
+      g.fillStyle = '#050505'; g.fillRect(0, 0, 512, 96);
+      g.fillStyle = '#ffb000'; g.font = 'bold 50px "Courier New", monospace'; g.textAlign = 'left'; g.textBaseline = 'middle';
+      g.fillText('501  QUEEN', 24, 50);
+      return c;
+    },
+    student() {
+      const c = canvas(256, 64), g = c.getContext('2d');
+      g.fillStyle = '#d52b1e'; g.fillRect(0, 0, 256, 64);
+      text(g, 'STUDENT DRIVER', 128, 34, 30, '#fff');
       return c;
     },
     glow() {
@@ -148,13 +218,19 @@
       return c;
     },
     asphalt(winter) {
-      const c = canvas(256, 256), g = c.getContext('2d');
-      g.fillStyle = winter ? '#6b7076' : '#4a4d52'; g.fillRect(0, 0, 256, 256);
-      for (let i = 0; i < 2600; i++) {
+      const S = 512, c = canvas(S, S), g = c.getContext('2d');
+      g.fillStyle = winter ? '#8e959c' : '#3d4045'; g.fillRect(0, 0, S, S);
+      // aggregate grain
+      for (let i = 0; i < 26000; i++) {
         const v = Math.random();
-        g.fillStyle = winter ? (v < 0.5 ? 'rgba(255,255,255,0.18)' : 'rgba(60,60,60,0.12)') : (v < 0.5 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.12)');
-        g.fillRect(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 2, 1 + Math.random() * 2);
+        g.fillStyle = winter ? (v < 0.55 ? 'rgba(255,255,255,0.22)' : 'rgba(40,45,50,0.18)') : v < 0.4 ? 'rgba(255,255,255,0.07)' : v < 0.8 ? 'rgba(0,0,0,0.14)' : 'rgba(120,110,95,0.10)';
+        const s = Math.random() < 0.9 ? 1 : 2;
+        g.fillRect(Math.random() * S, Math.random() * S, s, s);
       }
+      // patches and hairline cracks
+      for (let i = 0; i < 5; i++) { g.fillStyle = winter ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)'; g.fillRect(Math.random() * S, Math.random() * S, 40 + Math.random() * 90, 30 + Math.random() * 70); }
+      g.strokeStyle = winter ? 'rgba(80,85,90,0.25)' : 'rgba(0,0,0,0.35)'; g.lineWidth = 1;
+      for (let i = 0; i < 7; i++) { let x = Math.random() * S, y = Math.random() * S; g.beginPath(); g.moveTo(x, y); for (let k = 0; k < 8; k++) { x += (Math.random() - 0.5) * 30; y += (Math.random() - 0.3) * 20; g.lineTo(x, y); } g.stroke(); }
       return c;
     },
   };
@@ -164,8 +240,8 @@
       const key = name + ':' + (arg === undefined ? '' : arg);
       if (cache.has(key)) return cache.get(key);
       const t = tex(makers[name](arg));
-      if (name === 'asphalt') { t.wrapS = t.wrapT = THREE.RepeatWrapping; }
-      if (name === 'windows') { t.wrapS = t.wrapT = THREE.RepeatWrapping; }
+      if (name === 'asphalt' || name === 'windows' || name === 'concrete') { t.wrapS = t.wrapT = THREE.RepeatWrapping; }
+      if (name !== 'blob' && name !== 'glow' && name !== 'flare' && name !== 'beam') t.encoding = THREE.sRGBEncoding;
       cache.set(key, t);
       return t;
     },

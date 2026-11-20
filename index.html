@@ -37,15 +37,19 @@
         <button class="chk" id="chkR" data-act="checkRight"><b>C</b> Right<br>shoulder<i></i></button>
       </div>
       <div id="cluster">
-        <div id="sigL" class="sig">◀</div>
-        <canvas id="speedo" width="220" height="150"></canvas>
-        <div id="sigR" class="sig">▶</div>
-      </div>
-      <div id="tells">
-        <div class="row"><span id="gear" class="gear">P</span><span id="icoBelt" class="ico warn" title="Seatbelt (B)">⛓ BELT</span></div>
-        <div class="row"><span id="icoLights" class="ico" title="Headlights (L)">◐ LIGHTS</span><span id="icoHaz" class="ico" title="Hazards (H)">⚠ HAZ</span></div>
-        <div class="row"><span id="icoSkid" class="ico" title="Traction">≋ GRIP</span><span id="gapInfo" class="ico" title="Following distance">GAP —</span></div>
-        <div class="row small" id="stopDist">Stopping distance: —</div>
+        <canvas id="speedo"></canvas>
+        <div id="clusterMid">
+          <div id="sigRow"><span id="sigL" class="sig">&#9664;</span><div id="prnd"><span data-g="P">P</span><span data-g="R">R</span><span data-g="N">N</span><span data-g="D">D</span></div><span id="sigR" class="sig">&#9654;</span></div>
+          <div id="telltales">
+            <span id="icoBelt" class="tl warn" title="Seatbelt (B)">BELT</span>
+            <span id="icoLights" class="tl" title="Headlights (L)">LIGHTS</span>
+            <span id="icoHaz" class="tl" title="Hazards (H)">&#9888; HAZ</span>
+            <span id="icoSkid" class="tl" title="Traction">GRIP</span>
+          </div>
+          <div id="gapInfo" class="readout">GAP &mdash;</div>
+          <div id="stopDist" class="readout small">Stopping distance &mdash;</div>
+        </div>
+        <canvas id="steerGauge"></canvas>
       </div>
     </div>
   </div>

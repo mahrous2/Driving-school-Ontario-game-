@@ -179,7 +179,7 @@
       // hard-braking because of the player => examiner flag (failure to yield / cut-off)
       if (blockedBy && blockedBy.kind === 'player') {
         if (this.leaderId !== 'player') { this.leaderId = 'player'; this.leaderSince = G.time; }
-        if (acc < -4.2 && this.v > 4 && G.time - this.leaderSince < 2.5) G.events.push({ type: 'cutoff', veh: this });
+        if (acc < -4.2 && this.v > 4 && G.player.speed > 1.5 && G.time - this.leaderSince < 2.5) G.events.push({ type: 'cutoff', veh: this });
         if (this.v < 0.2 && G.player.speed < 0.2) this.honk += dt; else this.honk = 0;
       } else if (!blockedBy || blockedBy.kind !== 'player') { this.leaderId = blockedBy ? blockedBy.id : null; }
 
